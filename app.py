@@ -56,13 +56,14 @@ def parse_number(val):
     return round(float(val), 0)
 
 @st.cache_data(show_spinner=False)
-def load_sheet(file, sheet, key_col, val_col, parser=None, skip=0):
+def load_sheet(file, sheet, key_col, val_col, _parser=None, skip=0):
     df = pd.read_excel(file, sheet_name=sheet, skiprows=skip)
     out = {}
     for _, r in df.iterrows():
-        v = parser(r[val_col]) if parser else r[val_col]
+        v = _parser(r[val_col]) if _parser else r[val_col]
         out[r[key_col]] = v
     return out
+
 
 def sanitize_selection(old, options, lock):
     if lock:
@@ -218,3 +219,4 @@ st.download_button(
     "Channel_Customer_Report.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
+
