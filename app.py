@@ -13,6 +13,17 @@ st.subheader("Performance Overview")
 st.divider()
 
 # =====================================================
+# INIT SESSION STATE (ANTI RESET)
+# =====================================================
+for k, v in {
+    "channel": [],
+    "customer": [],
+    "lock_selection": False
+}.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
+
+# =====================================================
 # SIDEBAR – DATE & FILE UPLOAD
 # =====================================================
 st.sidebar.header("🗓️ Reporting Settings")
@@ -32,46 +43,28 @@ if not all([master_file, channel_file, customer_file]):
     st.stop()
 
 # =====================================================
-# SESSION STATE INIT (ANTI RESET)
-# =====================================================
-defaults = {
-    "lock_filter": False,
-    "channel": [],
-    "customer": [],
-    "channel_selector": [],
-    "customer_selector": []
-}
-for k, v in defaults.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
-
-# =====================================================
 # HELPERS
 # =====================================================
 def parse_percent(val):
-    if pd.isna(val):
-        return None
+    if pd.isna(val): return None
     if isinstance(val, str):
-        return round(float(val.replace("%", "").replace(",", ".")), 1)
+        return round(float(val.replace("%","").replace(",", ".")), 1)
     return round(float(val) * 100, 1)
 
 def parse_number(val):
-    if pd.isna(val):
-        return None
+    if pd.isna(val): return None
     return round(float(val), 0)
 
 @st.cache_data(show_spinner=False)
 def load_sheet(file, sheet, key_col, val_col, parser=None, skip=0):
     df = pd.read_excel(file, sheet_name=sheet, skiprows=skip)
-    d = {}
+    out = {}
     for _, r in df.iterrows():
-        v = r[val_col]
-        if parser:
-            v = parser(v)
-        d[r[key_col]] = v
-    return d
+        v = parser(r[val_col]) if parser else r[val_col]
+        out[r[key_col]] = v
+    return out
 
-def sanitize(old, options, lock):
+def sanitize_selection(old, options, lock):
     if lock:
         return old
     return [x for x in old if x in options]
@@ -80,162 +73,148 @@ def sanitize(old, options, lock):
 # LOAD METRICS
 # =====================================================
 channel_metrics = {
-    "cont": load_sheet(channel_file, "Sheet 18", "Customer P",
-                       "% of Total Current DO TP2 along Customer P, Customer P Hidden", parse_percent),
-    "mtd": load_sheet(channel_file, "Sheet 1", "Customer P", "Current DO", parse_number),
-    "ytd": load_sheet(channel_file, "Sheet 1", "Customer P", "Current DO TP2", parse_number),
-    "g_mtd": load_sheet(channel_file, "Sheet 4", "Customer P", "vs LY", parse_percent, skip=1),
-    "g_l3m": load_sheet(channel_file, "Sheet 3", "Customer P", "vs L3M", parse_percent, skip=1),
-    "g_ytd": load_sheet(channel_file, "Sheet 5", "Customer P", "vs LY", parse_percent, skip=1),
-    "a_mtd": load_sheet(channel_file, "Sheet 13", "Customer P", "Current Achievement", parse_percent),
-    "a_ytd": load_sheet(channel_file, "Sheet 14", "Customer P", "Current Achievement TP2", parse_percent),
+    "cont": load_sheet(channel_file,"Sheet 18","Customer P",
+        "% of Total Current DO TP2 along Customer P, Customer P Hidden",parse_percent),
+    "mtd": load_sheet(channel_file,"Sheet 1","Customer P","Current DO",parse_number),
+    "ytd": load_sheet(channel_file,"Sheet 1","Customer P","Current DO TP2",parse_number),
+    "g_mtd": load_sheet(channel_file,"Sheet 4","Customer P","vs LY",parse_percent,1),
+    "g_l3m": load_sheet(channel_file,"Sheet 3","Customer P","vs L3M",parse_percent,1),
+    "g_ytd": load_sheet(channel_file,"Sheet 5","Customer P","vs LY",parse_percent,1),
+    "a_mtd": load_sheet(channel_file,"Sheet 13","Customer P","Current Achievement",parse_percent),
+    "a_ytd": load_sheet(channel_file,"Sheet 14","Customer P","Current Achievement TP2",parse_percent),
 }
 
 customer_metrics = {
-    "cont": load_sheet(customer_file, "Sheet 18", "Customer P",
-                       "% of Total Current DO TP2 along Customer P, Customer P Hidden", parse_percent),
-    "mtd": load_sheet(customer_file, "Sheet 1", "Customer P", "Current DO", parse_number),
-    "ytd": load_sheet(customer_file, "Sheet 1", "Customer P", "Current DO TP2", parse_number),
-    "g_mtd": load_sheet(customer_file, "Sheet 4", "Customer P", "vs LY", parse_percent, skip=1),
-    "g_l3m": load_sheet(customer_file, "Sheet 3", "Customer P", "vs L3M", parse_percent, skip=1),
-    "g_ytd": load_sheet(customer_file, "Sheet 5", "Customer P", "vs LY", parse_percent, skip=1),
-    "a_mtd": load_sheet(customer_file, "Sheet 13", "Customer P", "Current Achievement", parse_percent),
-    "a_ytd": load_sheet(customer_file, "Sheet 14", "Customer P", "Current Achievement TP2", parse_percent),
+    "cont": load_sheet(customer_file,"Sheet 18","Customer P",
+        "% of Total Current DO TP2 along Customer P, Customer P Hidden",parse_percent),
+    "mtd": load_sheet(customer_file,"Sheet 1","Customer P","Current DO",parse_number),
+    "ytd": load_sheet(customer_file,"Sheet 1","Customer P","Current DO TP2",parse_number),
+    "g_mtd": load_sheet(customer_file,"Sheet 4","Customer P","vs LY",parse_percent,1),
+    "g_l3m": load_sheet(customer_file,"Sheet 3","Customer P","vs L3M",parse_percent,1),
+    "g_ytd": load_sheet(customer_file,"Sheet 5","Customer P","vs LY",parse_percent,1),
+    "a_mtd": load_sheet(customer_file,"Sheet 13","Customer P","Current Achievement",parse_percent),
+    "a_ytd": load_sheet(customer_file,"Sheet 14","Customer P","Current Achievement TP2",parse_percent),
 }
 
 # =====================================================
-# LOAD MASTER & MAP
+# LOAD MASTER
 # =====================================================
 master_df = pd.read_excel(master_file)
 
 CHANNEL_COLS = ["CHANNEL_REPORT_NAME","CHANNEL_NAME","CHANNEL","SALES_CHANNEL"]
 CUSTOMER_COLS = ["CUSTOMER_GROUP","CUSTOMER_NAME","CUSTOMER","CUST_GROUP"]
 
-def find_column(df, candidates):
-    for c in candidates:
+def find_col(df, cands):
+    for c in cands:
         if c in df.columns:
             return c
     return None
 
-channel_col = find_column(master_df, CHANNEL_COLS)
-customer_col = find_column(master_df, CUSTOMER_COLS)
+channel_col = find_col(master_df, CHANNEL_COLS)
+customer_col = find_col(master_df, CUSTOMER_COLS)
 
 if not channel_col or not customer_col:
-    st.error("❌ Channel / Customer column not found in master.")
+    st.error("❌ Channel / Customer column not found in Master")
     st.stop()
 
+# =====================================================
+# BUILD CHANNEL → CUSTOMER MAP
+# =====================================================
 @st.cache_data
-def build_mapping(df, ch_col, cust_col):
-    m = {}
-    for ch, g in df.groupby(ch_col):
-        m[ch] = [str(c) for c in g[cust_col].dropna().unique()]
-    return m
+def build_map(df, ch, cust):
+    out = {}
+    for c, g in df.groupby(ch):
+        out[c] = sorted(g[cust].astype(str).unique())
+    return out
 
-channel_to_customers = build_mapping(master_df, channel_col, customer_col)
-channels = list(channel_to_customers.keys())
+channel_to_customers = build_map(master_df, channel_col, customer_col)
 
 # =====================================================
-# FILTER SECTION (WITH LOCK)
+# 🔒 FILTER SECTION
 # =====================================================
 st.sidebar.header("🎯 Filter Data")
 
 lock = st.sidebar.toggle(
     "🔒 Lock Selection",
-    value=st.session_state.lock_filter,
-    key="lock_filter",
-    help="Filter tidak berubah walau upload ulang"
+    value=st.session_state.lock_selection,
+    key="lock_selection",
+    help="Jika ON, pilihan Channel & Customer tidak berubah walau upload ulang"
 )
 
-# Channel selector
-st.session_state.channel = sanitize(st.session_state.channel, channels, lock)
+channels = sorted(channel_to_customers.keys())
+st.session_state.channel = sanitize_selection(
+    st.session_state.channel, channels, lock
+)
 
-selected_channels = st.sidebar.multiselect(
+st.session_state.channel = st.sidebar.multiselect(
     "Channel",
-    options=channels,
+    channels,
     default=st.session_state.channel,
-    key="channel_selector",
     disabled=lock
 )
-st.session_state.channel = selected_channels
 
-# Customer selector
-customers_available = []
+customers = []
 for ch in st.session_state.channel:
-    customers_available.extend(channel_to_customers.get(ch, []))
-customers_available = sorted(set(customers_available))
+    customers.extend(channel_to_customers.get(ch, []))
+customers = sorted(set(customers))
 
-st.session_state.customer = sanitize(st.session_state.customer, customers_available, lock)
+st.session_state.customer = sanitize_selection(
+    st.session_state.customer, customers, lock
+)
 
-selected_customers = st.sidebar.multiselect(
+st.session_state.customer = st.sidebar.multiselect(
     "Customer Group",
-    options=customers_available,
+    customers,
     default=st.session_state.customer,
-    key="customer_selector",
     disabled=lock
 )
-st.session_state.customer = selected_customers
 
 if lock:
-    st.sidebar.caption("🔒 Filter terkunci")
+    st.sidebar.caption("🔒 Selection terkunci")
 
 # =====================================================
-# BUILD ROWS
+# PREPARE ROWS
 # =====================================================
 def build_row(label, metrics, indent=False):
     name = f"    {label}" if indent else label
-    vals = [
-        metrics["cont"].get(label, 0),
-        metrics["mtd"].get(label, 0),
-        metrics["ytd"].get(label, 0),
-        metrics["g_mtd"].get(label, 0),
-        metrics["g_l3m"].get(label, 0),
-        metrics["g_ytd"].get(label, 0),
-        metrics["a_mtd"].get(label, 0),
-        metrics["a_ytd"].get(label, 0),
-    ]
+    vals = [metrics[k].get(label,0) for k in
+            ["cont","mtd","ytd","g_mtd","g_l3m","g_ytd","a_mtd","a_ytd"]]
     return [name] + vals
 
-rows = []
-rows.append(build_row("GRAND TOTAL", channel_metrics))
+rows = [build_row("GRAND TOTAL", channel_metrics)]
 
 for ch in st.session_state.channel:
     rows.append(build_row(ch, channel_metrics))
     for cust in st.session_state.customer:
         if cust in channel_to_customers.get(ch, []):
-            rows.append(build_row(cust, customer_metrics, indent=True))
+            rows.append(build_row(cust, customer_metrics, True))
 
 # =====================================================
-# DISPLAY TABLE
+# DISPLAY
 # =====================================================
-st.subheader("📈 Performance Table")
-
-df_display = pd.DataFrame(rows, columns=[
+df_disp = pd.DataFrame(rows, columns=[
     "Channel / Customer","Cont YTD","Value MTD","Value YTD",
-    "Growth MTD","Growth %Gr L3M","Growth YTD","Ach MTD","Ach YTD"
+    "Growth MTD","%Gr L3M","Growth YTD","Ach MTD","Ach YTD"
 ])
 
-def pct(x): return f"{x:.1f}%" if pd.notna(x) else ""
+def pct(x): return f"{x:.1f}%" if x is not None else "0%"
 
-for c in ["Cont YTD","Growth MTD","Growth %Gr L3M","Growth YTD","Ach MTD","Ach YTD"]:
-    df_display[c] = df_display[c].apply(pct)
+for c in ["Cont YTD","Growth MTD","%Gr L3M","Growth YTD","Ach MTD","Ach YTD"]:
+    df_disp[c] = df_disp[c].apply(pct)
 
-st.dataframe(df_display, use_container_width=True)
+st.subheader("📈 Performance Table")
+st.dataframe(df_disp, use_container_width=True)
 
 # =====================================================
-# EXPORT
+# DOWNLOAD
 # =====================================================
-st.divider()
-st.subheader("⬇️ Export Report")
-
 output = BytesIO()
 with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-    df_display.to_excel(writer, sheet_name="Report", index=False)
-
-output.seek(0)
+    df_disp.to_excel(writer, index=False, sheet_name="Report")
 
 st.download_button(
-    "📥 Download Excel",
-    output,
+    "📥 Download Excel Report",
+    output.getvalue(),
     "Channel_Customer_Report.xlsx",
-    mime="application/vnd.openxmlformats-officedsheetml.sheet"
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
